@@ -1,95 +1,6 @@
 
 
 
-# """
-#     Use the Depth-Anything2 model to infer each frame's image's depth map. (turn in standard depth map)
-
-
-# """
-
-# import os
-# import torch
-# import cv2
-# import numpy as np
-# from tqdm import tqdm
-# import sys
-
-# # Adjust sys.path to include project root if needed
-# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-# try:
-#     from depth_anything.depth_anything_v2.dpt import DepthAnythingV2
-# except ModuleNotFoundError:
-#     print("Error: 'depth_anything_v2' module not found. Please install it by:")
-#     print("1. Clone the repository: git clone https://github.com/xxx/Depth-Anything-V2.git")
-#     print("2. Navigate to the directory and install: cd Depth-Anything-V2 && pip install -e .")
-#     print("3. Ensure checkpoints are in 'depth_anything_v2/checkpoints/'")
-#     sys.exit(1)
-
-
-
-
-# # === Load coords_tensor ===
-# # coords_tensor = torch.load("coords_tensor.pt")  # shape: [num_keypoints, num_frames, 2]
-
-
-# vertex_coords_tensor = torch.load("tip_vertex_pred_tracks.pt")
-# num_keypoints, num_frames, _ = vertex_coords_tensor.shape
-
-# # === Load DepthAnythingV2 Model ===
-# DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-# print(DEVICE)
-# model_configs = {
-#     'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
-#     'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
-#     'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
-#     'vitg': {'encoder': 'vitg', 'features': 384, 'out_channels': [1536, 1536, 1536, 1536]}
-# }
-# encoder = 'vitl'
-# model = DepthAnythingV2(**model_configs[encoder])
-# ckpt_path = os.path.join('depth_anything/checkpoints', f'depth_anything_v2_{encoder}.pth')
-# model.load_state_dict(torch.load(ckpt_path, map_location='cpu'))
-# model = model.to(DEVICE).eval()
-
-# # === Prepare output tensor ===
-# depth_tensor = torch.zeros((num_keypoints, num_frames), dtype=torch.float32)
-
-# # === Paths ===
-# image_folder = "./bricklaying_data"
-
-# # === Loop through each frame ===
-# for f in tqdm(range(num_frames), desc="Extracting depths"):
-#     frame_path = os.path.join(image_folder, f"frame_{f:04d}.png")
-#     img = cv2.imread(frame_path)
-#     if img is None:
-#         print(f"Missing frame: {frame_path}")
-#         continue
-
-#     # Run depth prediction
-#     depth_map = model.infer_image(img)  # shape: [H, W] numpy
-
-#     max_depth_raw = np.max(depth_map)
-#     depth_map_corrected = max_depth_raw - depth_map
-#     #depth_map_corrected = 522.1318 - depth_map  # hardcoded at here 
-
-#     H, W = depth_map.shape
-#     for k in range(num_keypoints):
-#         x, y = vertex_coords_tensor[k, f].tolist()
-#         if 0 <= x < W and 0 <= y < H:
-#             depth_tensor[k, f] = float(depth_map_corrected[int(y), int(x)])
-#         else:
-#             depth_tensor[k, f] = -1.0  # or float('nan')
-
-#         cv2.circle(depth_map_corrected, (x, y), radius=4, color=(0, 0, 255), thickness=-1)  # red dot
-
-#     cv2.imwrite('./depth_images/depth_' + str(f) + '.png', depth_map_corrected)
-   
-
-# # === Save output ===
-# torch.save(depth_tensor, "vertex_keypoint_depth_tensor.pt")
-# print("Saved depth_tensor:", depth_tensor.shape)
-
-
 
 
 import os
@@ -100,20 +11,24 @@ from tqdm import tqdm
 import sys
 
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+# Add the Depth-Anything-V2 submodule directory to the Python path to allow for direct imports
+# This is more specific and safer than adding the whole project root.
+DEPTH_ANYTHING_PATH = os.path.join(PROJECT_ROOT, 'Depth-Anything-V2')
+sys.path.append(DEPTH_ANYTHING_PATH)
 
 try:
-    from depth_anything.depth_anything_v2.dpt import DepthAnythingV2
+    # Now the import should work because the submodule's directory is on the path
+    from depth_anything_v2.dpt import DepthAnythingV2
 except ModuleNotFoundError:
-    print("Error: 'depth_anything_v2' module not found. Please install it by:")
-    print("1. Clone the repository: git clone https://github.com/xxx/Depth-Anything-V2.git")
-    print("2. Navigate to the directory and install: cd Depth-Anything-V2 && pip install -e .")
-    print("3. Ensure checkpoints are in 'depth_anything_v2/checkpoints/'")
+    print("Error: 'depth_anything_v2' module not found. Please ensure you have set up the submodules correctly:")
+    print(f"1. The submodule should exist at: {DEPTH_ANYTHING_PATH}")
+    print("2. You may need to install its dependencies: cd {DEPTH_ANYTHING_PATH} && pip install -e .")
     sys.exit(1)
 
-
-# Load coords tensor 
-vertex_coords_tensor = torch.load("trowel_tip_keypoints_pred_tracks.pt")
+# Load coords 2D coordinate tensor 
+vertex_coords_tensor = torch.load("keypoints_2d_traj.pt")
 num_keypoints, num_frames, _ = vertex_coords_tensor.shape
 print(f"Number of keypoints: {num_keypoints}, Number of frames: {num_frames}")
 
@@ -129,7 +44,7 @@ model_configs = {
 }
 encoder = 'vitl'
 model = DepthAnythingV2(**model_configs[encoder])
-ckpt_path = os.path.join('depth_anything/checkpoints', f'depth_anything_v2_{encoder}.pth')
+ckpt_path = os.path.join('Depth-Anything-V2/checkpoints', f'depth_anything_v2_{encoder}.pth')
 if not os.path.exists(ckpt_path):
     raise FileNotFoundError(f"Checkpoint not found at {ckpt_path}. Download it from the official repository.")
 model.load_state_dict(torch.load(ckpt_path, map_location=DEVICE))
@@ -140,7 +55,7 @@ depth_tensor = torch.zeros((num_keypoints, num_frames), dtype=torch.float32)
 depth_maps_all = []
 
 # output paths 
-image_folder = "./bricklaying_data"
+image_folder = "./data"
 depth_output_folder = "./depth_images"
 os.makedirs(depth_output_folder, exist_ok=True)
 
@@ -215,5 +130,5 @@ torch.save(depth_maps_tensor, "depth_map_cross_frames.pt")
 print(f"Saved per-frame depth maps tensor: {depth_maps_tensor.shape}") # 70. h, w
 
     
-torch.save(depth_tensor, "trowel_tip_keypoints_depth_tensor.pt")
+torch.save(depth_tensor, "keypoints_depth_tensor.pt")
 print(f"Saved keypoint depth tensor: {depth_tensor.shape}")

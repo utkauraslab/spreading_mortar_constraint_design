@@ -1,0 +1,20 @@
+This file lists the core Python packages required to run the project.
+Install them using the command:
+pip install -r requirements.txt
+Core deep learning and scientific computing libraries
+torch
+torchvision
+torchaudio
+
+Computer Vision library
+opencv-python
+
+Numerical operations and data handling
+numpy
+scipy
+
+Plotting and visualization
+matplotlib
+
+Progress bars for loops
+tqdm

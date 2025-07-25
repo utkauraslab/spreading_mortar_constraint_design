@@ -13,7 +13,7 @@ import json
 
 
 # Load video data
-video_path = './bricklaying_videos/mortar2.mp4'
+video_path = './spreading_mortar_videos/mortar2.mp4'
 video = cv2.VideoCapture(video_path)
 if not video.isOpened():
     raise FileNotFoundError(f"Could not open video: {video_path}")
@@ -71,11 +71,11 @@ for f in range(num_frames):  # Loop over frames first
         coords_tensor[k, f] = torch.tensor([x_int, y_int], dtype=torch.int32)
 
 # Save the tensor with the correct shape
-torch.save(coords_tensor, "trowel_tip_keypoints_pred_tracks.pt") # 3 70, 2
+torch.save(coords_tensor, "keypoints_2d_traj.pt") # 3 70, 2
 print(f"Saved predicted tracks to trowel_tip_keypoints_pred_tracks.pt, shape: {coords_tensor.shape}")  # [3, 70, 2]
 
 # Visualize and save the inference video
-output_video_dir = "./inference_videos"
+output_video_dir = "./tracking_videos"
 os.makedirs(output_video_dir, exist_ok=True)
 vis = Visualizer(
     save_dir=output_video_dir,
@@ -89,4 +89,4 @@ vis.visualize(
     visibility=pred_visibility,
     filename='trowel_tip_tracking'
 )
-print(f"Saved inference video to {output_video_dir}/trowel_tip_tracking.mp4")
+print(f"Saved inference video to {output_video_dir}/trowel_tip_keypoints_tracking.mp4")
