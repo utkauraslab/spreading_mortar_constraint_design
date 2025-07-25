@@ -1,1 +1,6 @@
 *.pt
+
+
+# Ignore model checkpoints and weigths
+co-tracker/checkpoints/
+Depth-Anything-V2/checkpoints/
