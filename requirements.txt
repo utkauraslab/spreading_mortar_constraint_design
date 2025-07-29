@@ -15,6 +15,7 @@ scipy
 
 Plotting and visualization
 matplotlib
+plotly
 
 Progress bars for loops
 tqdm
