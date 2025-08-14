@@ -103,20 +103,164 @@
 
 
 
+# import torch
+# import cv2
+# import os
+# from pathlib import Path
+# from cotracker.predictor import CoTrackerPredictor
+# from cotracker.utils.visualizer import Visualizer
+# import numpy as np
+# import json
+# import sys
+
+# # --- Path Setup ---
+# # Establish the project root directory to ensure paths are correct
+# PROJECT_ROOT = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+# print(PROJECT_ROOT)
+# COTRACKER_PATH = os.path.join(PROJECT_ROOT, 'co-tracker')
+# sys.path.append(COTRACKER_PATH)
+# # --- Configuration ---
+# VIDEO_PATH = os.path.join(PROJECT_ROOT, 'spreading_mortar_videos/mortar2.mp4')
+# CHECKPOINT_PATH = os.path.join(PROJECT_ROOT, 'co-tracker/checkpoints/scaled_offline.pth')
+# KEYPOINTS_PATH = os.path.join(PROJECT_ROOT, "trowel_tip_keypoints.json")
+# OUTPUT_VIDEO_DIR = os.path.join(PROJECT_ROOT, "tracking_videos")
+# OUTPUT_TRAJECTORY_PATH = os.path.join(PROJECT_ROOT, "keypoints_2d_traj.npy")
+
+
+# # --- Main Execution ---
+# if __name__ == "__main__":
+#     # Load video data
+#     if not os.path.exists(VIDEO_PATH):
+#         print(f"Error: Video not found at {VIDEO_PATH}")
+#         sys.exit(1)
+        
+#     video = cv2.VideoCapture(VIDEO_PATH)
+#     frames = []
+#     while True:
+#         ret, frame = video.read()
+#         if not ret:
+#             break
+#         frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))  # Convert BGR to RGB
+#     video.release()
+
+#     if not frames:
+#         print("Error: No frames could be read from the video.")
+#         sys.exit(1)
+
+#     video_tensor = torch.from_numpy(np.stack(frames)).permute(0, 3, 1, 2)[None].float()
+#     num_frames = len(frames)
+
+#     # Move to GPU if available
+#     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+#     print(f"Using device: {DEVICE}")
+#     video_tensor = video_tensor.to(DEVICE)
+
+#     # Load CoTracker model
+#     if not os.path.exists(CHECKPOINT_PATH):
+#         print(f"Error: CoTracker checkpoint not found at {CHECKPOINT_PATH}")
+#         print("Please run the 'setup_dependencies.sh' script to download it.")
+#         sys.exit(1)
+        
+#     model = CoTrackerPredictor(checkpoint=CHECKPOINT_PATH)
+#     model = model.to(DEVICE)
+
+#     # Load initial keypoints from JSON (frame 0 coordinates)
+#     if not os.path.exists(KEYPOINTS_PATH):
+#         print(f"Error: Keypoints file not found at {KEYPOINTS_PATH}")
+#         sys.exit(1)
+
+#     with open(KEYPOINTS_PATH, "r") as f:
+#         points_data = json.load(f)
+
+#     # Convert to tensor: each row is [frame_index, x, y] for frame 0
+#     queries = torch.tensor([[0, float(p["x"]), float(p["y"])] for p in points_data], device=DEVICE)
+#     num_keypoints = len(points_data)
+
+#     print(f"Initial Queries Shape: {queries.shape}")
+
+#     # Run CoTracker inference
+#     pred_tracks, pred_visibility = model(video_tensor, queries=queries[None])
+#     print(f"Predicted Tracks Shape: {pred_tracks.shape}")
+
+#     # Convert predicted tracks to integer coordinates and store in tensor
+#     # The final tensor will be on the CPU
+#     coords_tensor = torch.zeros((num_keypoints, num_frames, 2), dtype=torch.int32)
+    
+#     # Get image dimensions from the first frame for clipping
+#     H, W, _ = frames[0].shape
+    
+#     for f in range(num_frames):
+#         for k in range(num_keypoints):
+#             x, y = pred_tracks[0, f, k].cpu().numpy()
+#             x_int = int(round(x))
+#             y_int = int(round(y))
+#             # Clip to image bounds
+#             x_int = np.clip(x_int, 0, W - 1)
+#             y_int = np.clip(y_int, 0, H - 1)
+#             coords_tensor[k, f] = torch.tensor([x_int, y_int], dtype=torch.int32)
+
+#     # --- Save the trajectory as a .npy file ---
+#     # Convert the final tensor to a NumPy array
+#     coords_array = coords_tensor.numpy()
+    
+#     # Save the array using np.save
+#     np.save(OUTPUT_TRAJECTORY_PATH, coords_array)
+#     print(f"Saved predicted tracks to {OUTPUT_TRAJECTORY_PATH}, shape: {coords_array.shape}")
+
+#     # Visualize and save the inference video
+#     os.makedirs(OUTPUT_VIDEO_DIR, exist_ok=True)
+#     vis = Visualizer(
+#         save_dir=OUTPUT_VIDEO_DIR,
+#         linewidth=6,
+#         mode='cool',
+#         tracks_leave_trace=-1  # Leave trace for all frames
+#     )
+#     vis.visualize(
+#         video=video_tensor,
+#         tracks=pred_tracks,
+#         visibility=pred_visibility,
+#         filename='trowel_tip_tracking'
+#     )
+#     print(f"Saved inference video to {os.path.join(OUTPUT_VIDEO_DIR, 'trowel_tip_tracking.mp4')}")
+
+
+
+
+
+
+"""
+Extract 2D coordinates from json file and as the input for CoTracker model. 
+(initial keypoint 2D coords are write into the json file by clicking keypoints on the first frame)
+Use CoTracker model to predict these keypoints trajectories cross following frames and store their trajectories as .npy file.
+
+'keypoints_2d_traj.npy' contains the predicted 2D trajectories for for all keypoints across all processed frames.
+    
+    
+"""
+
+
+
+
+
+import os
+import sys
 import torch
 import cv2
-import os
-from pathlib import Path
-from cotracker.predictor import CoTrackerPredictor
-from cotracker.utils.visualizer import Visualizer
 import numpy as np
+from pathlib import Path
 import json
-import sys
 
 # --- Path Setup ---
-# Establish the project root directory to ensure paths are correct
-PROJECT_ROOT = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-print(PROJECT_ROOT)
+# This robustly finds the project root by going up one level from this script's location ('utils')
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+# Add the co-tracker submodule to the Python path
+COTRACKER_PATH = os.path.join(PROJECT_ROOT, 'co-tracker')
+sys.path.append(COTRACKER_PATH)
+
+# Now that the path is set, this import will work
+from cotracker.predictor import CoTrackerPredictor
+from cotracker.utils.visualizer import Visualizer
+
 
 # --- Configuration ---
 VIDEO_PATH = os.path.join(PROJECT_ROOT, 'spreading_mortar_videos/mortar2.mp4')
@@ -124,6 +268,9 @@ CHECKPOINT_PATH = os.path.join(PROJECT_ROOT, 'co-tracker/checkpoints/scaled_offl
 KEYPOINTS_PATH = os.path.join(PROJECT_ROOT, "trowel_tip_keypoints.json")
 OUTPUT_VIDEO_DIR = os.path.join(PROJECT_ROOT, "tracking_videos")
 OUTPUT_TRAJECTORY_PATH = os.path.join(PROJECT_ROOT, "keypoints_2d_traj.npy")
+
+# Downsampling to reduce GPU memory usage
+DOWNSAMPLE_FACTOR = 0.5
 
 
 # --- Main Execution ---
@@ -135,11 +282,20 @@ if __name__ == "__main__":
         
     video = cv2.VideoCapture(VIDEO_PATH)
     frames = []
+    # Get original video dimensions
+    original_width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+    original_height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
     while True:
         ret, frame = video.read()
         if not ret:
             break
-        frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))  # Convert BGR to RGB
+        
+        # Resize the frame to reduce memory usage
+        if DOWNSAMPLE_FACTOR != 1.0:
+            frame = cv2.resize(frame, (0, 0), fx=DOWNSAMPLE_FACTOR, fy=DOWNSAMPLE_FACTOR, interpolation=cv2.INTER_AREA)
+            
+        frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
     video.release()
 
     if not frames:
@@ -163,7 +319,7 @@ if __name__ == "__main__":
     model = CoTrackerPredictor(checkpoint=CHECKPOINT_PATH)
     model = model.to(DEVICE)
 
-    # Load initial keypoints from JSON (frame 0 coordinates)
+    # Load initial keypoints from JSON
     if not os.path.exists(KEYPOINTS_PATH):
         print(f"Error: Keypoints file not found at {KEYPOINTS_PATH}")
         sys.exit(1)
@@ -171,8 +327,8 @@ if __name__ == "__main__":
     with open(KEYPOINTS_PATH, "r") as f:
         points_data = json.load(f)
 
-    # Convert to tensor: each row is [frame_index, x, y] for frame 0
-    queries = torch.tensor([[0, float(p["x"]), float(p["y"])] for p in points_data], device=DEVICE)
+    # Convert to tensor and scale coordinates to match the downsampled video
+    queries = torch.tensor([[0, float(p["x"]) * DOWNSAMPLE_FACTOR, float(p["y"]) * DOWNSAMPLE_FACTOR] for p in points_data], device=DEVICE)
     num_keypoints = len(points_data)
 
     print(f"Initial Queries Shape: {queries.shape}")
@@ -181,28 +337,26 @@ if __name__ == "__main__":
     pred_tracks, pred_visibility = model(video_tensor, queries=queries[None])
     print(f"Predicted Tracks Shape: {pred_tracks.shape}")
 
-    # Convert predicted tracks to integer coordinates and store in tensor
-    # The final tensor will be on the CPU
+    # Convert predicted tracks back to original video coordinates
     coords_tensor = torch.zeros((num_keypoints, num_frames, 2), dtype=torch.int32)
-    
-    # Get image dimensions from the first frame for clipping
-    H, W, _ = frames[0].shape
     
     for f in range(num_frames):
         for k in range(num_keypoints):
-            x, y = pred_tracks[0, f, k].cpu().numpy()
-            x_int = int(round(x))
-            y_int = int(round(y))
-            # Clip to image bounds
-            x_int = np.clip(x_int, 0, W - 1)
-            y_int = np.clip(y_int, 0, H - 1)
+            x_down, y_down = pred_tracks[0, f, k].cpu().numpy()
+            
+            x_orig = x_down / DOWNSAMPLE_FACTOR
+            y_orig = y_down / DOWNSAMPLE_FACTOR
+            
+            x_int = int(round(x_orig))
+            y_int = int(round(y_orig))
+            
+            # Clip to original image bounds
+            x_int = np.clip(x_int, 0, original_width - 1) 
+            y_int = np.clip(y_int, 0, original_height - 1)
             coords_tensor[k, f] = torch.tensor([x_int, y_int], dtype=torch.int32)
 
-    # --- Save the trajectory as a .npy file ---
-    # Convert the final tensor to a NumPy array
+    # Save the trajectory as a .npy file
     coords_array = coords_tensor.numpy()
-    
-    # Save the array using np.save
     np.save(OUTPUT_TRAJECTORY_PATH, coords_array)
     print(f"Saved predicted tracks to {OUTPUT_TRAJECTORY_PATH}, shape: {coords_array.shape}")
 
@@ -210,9 +364,9 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_VIDEO_DIR, exist_ok=True)
     vis = Visualizer(
         save_dir=OUTPUT_VIDEO_DIR,
-        linewidth=6,
+        linewidth=3,
         mode='cool',
-        tracks_leave_trace=-1  # Leave trace for all frames
+        tracks_leave_trace=-1
     )
     vis.visualize(
         video=video_tensor,

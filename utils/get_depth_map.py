@@ -141,6 +141,18 @@
 
 
 
+"""
+Use the Depth Anything 2 model to inference each frame rgb image's depth map. 
+Also extract trowel keypoints' dpeth values cross frames.
+
+
+'depth_map_cross_frames.npy' contains the predicted depth map across all processed frames.
+    
+'trowel_tip_keypoints_depth_tensor.npy' contains the predicted depth values for for all keypoints across all processed frames.
+    
+    
+"""
+
 
 
 
