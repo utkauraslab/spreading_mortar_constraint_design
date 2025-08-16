@@ -219,9 +219,8 @@ def build_Phi_constraints(xs_constraints, K, D=3, sigma=None):
     blocks = [build_block_phi(xc, K, D, sigma) for xc in xs_constraints]
     return np.vstack(blocks)  # (M*D, K*D)
 
-# ------------------------------
-# Learning from a single demo
-# ------------------------------
+
+
 def fit_weights_single_demo(demo_traj, K, sigma=None, ridge=1e-6):
     """
     Fit weights per axis using ridge least squares:
@@ -257,9 +256,8 @@ def fit_weights_single_demo(demo_traj, K, sigma=None, ridge=1e-6):
 
     return mu_w, alpha2, Phi
 
-# ------------------------------
-# Conditioning (multi-point)
-# ------------------------------
+
+
 def condition_on_points(mu_w, lambda2, xs_constraints, y_constraints, K, D=3, sigma=None, sigma_c2=1e-4):
     """
     ProMP conditioning with prior Sigma_w = lambda2 * I (size K*D),

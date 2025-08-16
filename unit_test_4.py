@@ -42,7 +42,8 @@ PREBUILT_DEMO_PATH        = None
 # Visualization parameters
 TRIANGLE_EDGE_SIZE = 0.15  # meters (long side of canonical triangle)
 RECTANGLE_LENGTH   = 0.85  # meters
-RECTANGLE_WIDTH    = 0.10  # meters
+RECTANGLE_HEIGHT = 0.04      # in meters for the brick wall plane
+RECTANGLE_WIDTH = 0.16
 WALL_POINT_SIZE    = 3
 
 # ProMP hyperparameters
@@ -57,7 +58,7 @@ N_SAMPLES  = 0                    # extra sampled trajectories (0 for none)
 # Triangle glyph density along the generated curve
 N_TRIANGLES_APPROX = 50
 
-# ------------------------- Utilities: polygons & unprojection -------------------------
+
 
 def to_cv_polys(poly_like, width, height):
     """Coerce a single polygon or list-of-polygons to a list of (M,2) int32 arrays within image bounds."""
@@ -105,12 +106,13 @@ def unproject_points(coords_2d, depth_map, intrinsics):
     Y = (ys - cy) * Z / fy
     return np.stack((X, Y, Z), axis=-1).astype(np.float32)
 
+
 def pca_frame(point_cloud):
     """Return (centroid, x_axis, y_axis, z_axis) from PCA; z is smallest-variance direction (flipped to point toward camera if desired)."""
     if point_cloud.shape[0] < 3:
         return None, None, None, None
-    C = point_cloud.mean(axis=0)
-    Xc = point_cloud - C
+    centroid = point_cloud.mean(axis=0)
+    Xc = point_cloud - centroid
     cov = np.cov(Xc, rowvar=False)
     evals, evecs = np.linalg.eigh(cov)
     idx = np.argsort(evals)[::-1]
@@ -118,9 +120,9 @@ def pca_frame(point_cloud):
     y_axis = evecs[:, idx[1]]
     z_axis = evecs[:, idx[2]]  # normal
     z_axis = -z_axis           # optional flip (keep from earlier code)
-    return C, x_axis, y_axis, z_axis
+    return centroid, x_axis, y_axis, z_axis
 
-# ------------------------- Build 3D demo from polygons -------------------------
+
 
 def centroid_from_polygon_mask(poly_2d, depth, intrinsics):
     """Rasterize polygon to a mask, unproject its pixels, return 3D centroid."""
@@ -135,6 +137,7 @@ def centroid_from_polygon_mask(poly_2d, depth, intrinsics):
     if cloud.shape[0] == 0:
         return None, None
     return cloud.mean(axis=0), cloud
+
 
 def demo_from_polygons(depth_maps, body_polys, intrinsics):
     """
@@ -162,7 +165,6 @@ def demo_from_polygons(depth_maps, body_polys, intrinsics):
     demo = np.column_stack([s, traj_pts])
     return demo, np.array(kept_idx, dtype=np.int32)
 
-# ------------------------- ProMP core -------------------------
 
 def rbf_kernel(K, xt, sigma=None):
     if sigma is None:
@@ -180,13 +182,16 @@ def build_design_matrix(xs, K, sigma=None):
         Phi[i, :] = rbf_kernel(K, xt, sigma)
     return Phi
 
+
 def build_block_phi(xt, K, D=3, sigma=None):
     phi = rbf_kernel(K, xt, sigma).reshape(1, K)
     return np.kron(np.eye(D), phi)  # (D, K*D)
 
+
 def build_Phi_constraints(xs_constraints, K, D=3, sigma=None):
     blocks = [build_block_phi(xc, K, D, sigma) for xc in xs_constraints]
     return np.vstack(blocks)  # (M*D, K*D)
+
 
 def fit_weights_single_demo(demo_traj, K, sigma=None, ridge=1e-6):
     T = demo_traj.shape[0]
@@ -210,6 +215,7 @@ def fit_weights_single_demo(demo_traj, K, sigma=None, ridge=1e-6):
     dof = max(1, D*T - D*K)
     alpha2 = float(np.sum(residuals**2) / dof)
     return mu_w, alpha2, Phi
+
 
 def condition_on_points(mu_w, lambda2, xs_constraints, y_constraints, K, D=3, sigma=None, sigma_c2=1e-4):
     xs_constraints = np.asarray(xs_constraints).ravel()
@@ -283,6 +289,7 @@ def quaternion_from_matrix(R):
     q /= np.linalg.norm(q) + 1e-12
     return q
 
+
 def slerp(q0, q1, u):
     dot = float(np.dot(q0, q1))
     if dot < 0.0:
@@ -298,6 +305,7 @@ def slerp(q0, q1, u):
     s1 = np.sin(theta) / (sin_0 + 1e-12)
     return s0*q0 + s1*q1
 
+
 def R_from_quat(q):
     w,x,y,z = q
     return np.array([
@@ -305,6 +313,7 @@ def R_from_quat(q):
         [2*(x*y + z*w),   1-2*(x*x+z*z),   2*(y*z - x*w)],
         [2*(x*z - y*w),   2*(y*z + x*w),   1-2*(x*x+y*y)]
     ], dtype=np.float64)
+
 
 def interp_pose_rotations(Ts, u):
     """SLERP rotations in Ts (N,4,4) at phase u in [0,1]."""
@@ -320,7 +329,6 @@ def interp_pose_rotations(Ts, u):
     q  = slerp(q0, q1, a)
     return R_from_quat(q)
 
-# ------------------------- Wall helpers -------------------------
 
 def draw_wall_cloud_and_plane(plotter, wall_poly_2d, depth_map, intrinsics):
     h, w = depth_map.shape
@@ -333,33 +341,90 @@ def draw_wall_cloud_and_plane(plotter, wall_poly_2d, depth_map, intrinsics):
     cloud  = unproject_points(pixels, depth_map, intrinsics)
     if cloud.shape[0] == 0:
         return None
-    plotter.add_points(cloud, style='points', color='#D95319', render_points_as_spheres=True,
-                       point_size=WALL_POINT_SIZE, label='Brick Wall Cloud')
-    C, x_axis, y_axis, z_axis = pca_frame(cloud)
-    if C is None:
+    # plotter.add_points(cloud, style='points', color='#D95319', render_points_as_spheres=True,
+    #                    point_size=WALL_POINT_SIZE, label='Brick Wall Cloud')
+    centroid, x_axis, y_axis, z_axis = pca_frame(cloud)
+    if centroid is None:
         return None
-    plotter.add_points(C, color='black', point_size=10, label='Wall Centroid')
-    arrow_scale = 0.1
-    plotter.add_arrows(cent=np.array([C]), direction=np.array([x_axis]), mag=arrow_scale, color='red',   label='Wall X-Axis')
-    plotter.add_arrows(cent=np.array([C]), direction=np.array([y_axis]), mag=arrow_scale, color='green', label='Wall Y-Axis')
-    plotter.add_arrows(cent=np.array([C]), direction=np.array([z_axis]), mag=arrow_scale, color='blue',  label='Wall Z-Axis (Normal)')
+    plotter.add_points(centroid, color='black', point_size=10, label='Wall Centroid')
+    arrow_scale = 0.05
+    plotter.add_arrows(cent=np.array([centroid]), 
+                       direction=np.array([x_axis]), 
+                       mag=arrow_scale, 
+                       color='red',   
+                       label='Wall X-Axis')
+    plotter.add_arrows(cent=np.array([centroid]), 
+                       direction=np.array([y_axis]), 
+                       mag=arrow_scale, 
+                       color='green', 
+                       label='Wall Y-Axis')
+    plotter.add_arrows(cent=np.array([centroid]), 
+                       direction=np.array([z_axis]), 
+                       mag=arrow_scale, 
+                       color='blue',  
+                       label='Wall Z-Axis (Normal)')
 
-    l, w_ = RECTANGLE_LENGTH / 2, RECTANGLE_WIDTH / 2
-    v1_2d, v2_2d, v3_2d, v4_2d = np.array([-l, -w_]), np.array([l, -w_]), np.array([l, w_]), np.array([-l, w_])
-    v1_3d = C + v1_2d[0] * x_axis + v1_2d[1] * y_axis
-    v2_3d = C + v2_2d[0] * x_axis + v2_2d[1] * y_axis
-    v3_3d = C + v3_2d[0] * x_axis + v3_2d[1] * y_axis
-    v4_3d = C + v4_2d[0] * x_axis + v4_2d[1] * y_axis
-    rectangle_points = np.array([v1_3d, v2_3d, v3_3d, v4_3d])
-    face = np.hstack([4, 0, 1, 2, 3])
-    rectangle_mesh = pv.PolyData(rectangle_points, face)
-    plotter.add_mesh(rectangle_mesh, color='lightgreen', opacity=0.8, show_edges=True, edge_color='black', line_width=3, label='Wall Best-Fit Plane')
+    l, h, w = RECTANGLE_LENGTH / 2, RECTANGLE_HEIGHT / 2, RECTANGLE_WIDTH / 2
+    v1_2d, v2_2d, v3_2d, v4_2d = np.array([-l, -2*h]), np.array([l, -2*h]), np.array([l, 0]), np.array([-l, 0])
+    # v1_3d = C + v1_2d[0] * x_axis + v1_2d[1] * y_axis
+    # v2_3d = C + v2_2d[0] * x_axis + v2_2d[1] * y_axis
+    # v3_3d = C + v3_2d[0] * x_axis + v3_2d[1] * y_axis
+    # v4_3d = C + v4_2d[0] * x_axis + v4_2d[1] * y_axis
+    # rectangle_points = np.array([v1_3d, v2_3d, v3_3d, v4_3d])
+    # face = np.hstack([4, 0, 1, 2, 3])
+    # rectangle_mesh = pv.PolyData(rectangle_points, face)
+    # plotter.add_mesh(rectangle_mesh, 
+    #                  color='#D95319', 
+    #                  opacity=0.8, 
+    #                  show_edges=True, 
+    #                  edge_color='black', 
+    #                  line_width=3, 
+    #                  label='Wall Best-Fit Plane')
+    
+
+    # Front (+w) and back (-w) faces
+    v1f = centroid + v1_2d[0]*x_axis + v1_2d[1]*y_axis
+    v2f = centroid + v2_2d[0]*x_axis + v2_2d[1]*y_axis
+    v3f = centroid + v3_2d[0]*x_axis + v3_2d[1]*y_axis
+    v4f = centroid + v4_2d[0]*x_axis + v4_2d[1]*y_axis
+
+    v1b = centroid + v1_2d[0]*x_axis + v1_2d[1]*y_axis + w*z_axis
+    v2b = centroid + v2_2d[0]*x_axis + v2_2d[1]*y_axis + w*z_axis
+    v3b = centroid + v3_2d[0]*x_axis + v3_2d[1]*y_axis + w*z_axis
+    v4b = centroid + v4_2d[0]*x_axis + v4_2d[1]*y_axis + w*z_axis
+
+    # Vertex order: 0..3 = front (ccw when looking from +z_axis), 4..7 = back
+    pts = np.array([v1f, v2f, v3f, v4f, v1b, v2b, v3b, v4b])
+
+    # 6 quad faces (each starts with the number of indices = 4)
+    faces = np.hstack([
+        [4, 0,1,2,3],   # front
+        [4, 4,5,6,7],   # back
+        [4, 0,1,5,4],   # side
+        [4, 1,2,6,5],   # side
+        [4, 2,3,7,6],   # side
+        [4, 3,0,4,7],   # side
+    ]).astype(np.int64)
+
+    box_mesh = pv.PolyData(pts, faces)
+    plotter.add_mesh(
+        box_mesh,
+        color='#D95319',
+        opacity=1,
+        show_edges=True,
+        edge_color='black',
+        line_width=3,
+        label='Wall Volume (thickened plane)'
+    )
+
+
+
     return cloud
 
-# ------------------------- Main -------------------------
+
 
 def main():
-    print("Loading data...")
+    
     depth_maps = np.load(DEPTH_MAP_PATH)  # (T, H, W)
     H, W = depth_maps.shape[1:]
     body_polys = np.load(TROWEL_VERTICES_2D_PATH, allow_pickle=True)  # (T,) object array
@@ -412,7 +477,7 @@ def main():
     _ = draw_wall_cloud_and_plane(plotter, wall_poly_2d, depth_maps[0], INTRINSICS)
 
     # Plot demo curve
-    plotter.add_mesh(pv.Spline(Yd, 1000), color="gray", line_width=2, label="Demo (ref)")
+    plotter.add_mesh(pv.Spline(Yd, 1000), color="pink", line_width=2, label="Demo (ref)")
     plotter.add_points(Yd[0], color='gray', point_size=12, render_points_as_spheres=True)
     plotter.add_points(Yd[-1], color='gray', point_size=12, render_points_as_spheres=True)
 
@@ -439,7 +504,10 @@ def main():
         face = np.hstack([3, 0, 1, 2])
         tri = pv.PolyData(V_world, face)
         opacity = 0.25 + 0.65 * (i / (T_gen - 1))
-        plotter.add_mesh(tri, color='purple', opacity=opacity, show_edges=True)
+        plotter.add_mesh(tri, 
+                         color='grey', 
+                         opacity=0.8, 
+                         show_edges=True)
 
     plotter.add_legend()
     plotter.camera.azimuth = -60
@@ -448,6 +516,8 @@ def main():
 
     print("\nShowing plot... rotate/zoom with mouse.")
     plotter.show()
+
+
 
 if __name__ == "__main__":
     main()

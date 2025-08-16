@@ -28,10 +28,11 @@ TROWEL_TIP_VERTICES_2D_PATH = os.path.join(PROJECT_ROOT, "trowel_tip_polygon_ver
 BRICK_WALL_VERTICES_PATH = os.path.join(PROJECT_ROOT, "brick_wall_side_surface.npy")
 
 # --- Visualization Parameters ---
-TRIANGLE_EDGE_SIZE = 0.15  # in meters for the trowel
-RECTANGLE_LENGTH = 0.85    # in meters for the brick wall plane
-RECTANGLE_WIDTH = 0.1      # in meters for the brick wall plane
 
+TRIANGLE_EDGE_SIZE = 0.15  # meters (long side of canonical triangle)
+RECTANGLE_LENGTH   = 0.85  # meters
+RECTANGLE_HEIGHT = 0.04      # in meters for the brick wall plane
+RECTANGLE_WIDTH = 0.16
 # --- Helper Functions ---
 
 def unproject_points(coords_2d, depth_map, intrinsics):
@@ -118,8 +119,8 @@ if __name__ == "__main__":
     brick_wall_point_cloud_3d = unproject_points(brick_wall_pixels_2d, all_depth_maps[0], INTRINSICS)
 
     if brick_wall_point_cloud_3d.size > 0:
-        plotter.add_points(brick_wall_point_cloud_3d, style='points', color='#D95319', 
-                           render_points_as_spheres=True, point_size=3, label='Brick Wall Cloud')
+        # plotter.add_points(brick_wall_point_cloud_3d, style='points', color='#D95319', 
+        #                    render_points_as_spheres=True, point_size=3, label='Brick Wall Cloud')
         
         centroid, x_axis, y_axis, z_axis = calculate_local_frame(brick_wall_point_cloud_3d)
 
@@ -130,16 +131,53 @@ if __name__ == "__main__":
             plotter.add_arrows(cent=np.array([centroid]), direction=np.array([y_axis]), mag=arrow_scale, color='green', label='Wall Y-Axis')
             plotter.add_arrows(cent=np.array([centroid]), direction=np.array([z_axis]), mag=arrow_scale, color='blue', label='Wall Z-Axis (Normal)')
 
-            l, w = RECTANGLE_LENGTH / 2, RECTANGLE_WIDTH / 2
-            v1_2d, v2_2d, v3_2d, v4_2d = np.array([-l, -w]), np.array([l, -w]), np.array([l, w]), np.array([-l, w])
-            v1_3d = centroid + v1_2d[0] * x_axis + v1_2d[1] * y_axis
-            v2_3d = centroid + v2_2d[0] * x_axis + v2_2d[1] * y_axis
-            v3_3d = centroid + v3_2d[0] * x_axis + v3_2d[1] * y_axis
-            v4_3d = centroid + v4_2d[0] * x_axis + v4_2d[1] * y_axis
-            rectangle_points = np.array([v1_3d, v2_3d, v3_3d, v4_3d])
-            face = np.hstack([4, 0, 1, 2, 3])
-            rectangle_mesh = pv.PolyData(rectangle_points, face)
-            plotter.add_mesh(rectangle_mesh, color='lightgreen', opacity=0.8, show_edges=True, edge_color='black', line_width=3, label='Wall Best-Fit Plane')
+            l, w, h = RECTANGLE_LENGTH / 2, RECTANGLE_WIDTH / 2, RECTANGLE_HEIGHT / 2
+            v1_2d, v2_2d, v3_2d, v4_2d = np.array([-l, -2*h]), np.array([l, -2*h]), np.array([l, 0]), np.array([-l, 0])
+            # v1_3d = centroid + v1_2d[0] * x_axis + v1_2d[1] * y_axis
+            # v2_3d = centroid + v2_2d[0] * x_axis + v2_2d[1] * y_axis
+            # v3_3d = centroid + v3_2d[0] * x_axis + v3_2d[1] * y_axis
+            # v4_3d = centroid + v4_2d[0] * x_axis + v4_2d[1] * y_axis
+            # rectangle_points = np.array([v1_3d, v2_3d, v3_3d, v4_3d])
+            # face = np.hstack([4, 0, 1, 2, 3])
+            # rectangle_mesh = pv.PolyData(rectangle_points, face)
+            # plotter.add_mesh(rectangle_mesh, color='lightgreen', opacity=0.8, show_edges=True, edge_color='black', line_width=3, label='Wall Best-Fit Plane')
+
+
+            v1f = centroid + v1_2d[0]*x_axis + v1_2d[1]*y_axis
+            v2f = centroid + v2_2d[0]*x_axis + v2_2d[1]*y_axis
+            v3f = centroid + v3_2d[0]*x_axis + v3_2d[1]*y_axis
+            v4f = centroid + v4_2d[0]*x_axis + v4_2d[1]*y_axis
+
+            v1b = centroid + v1_2d[0]*x_axis + v1_2d[1]*y_axis + w*z_axis
+            v2b = centroid + v2_2d[0]*x_axis + v2_2d[1]*y_axis + w*z_axis
+            v3b = centroid + v3_2d[0]*x_axis + v3_2d[1]*y_axis + w*z_axis
+            v4b = centroid + v4_2d[0]*x_axis + v4_2d[1]*y_axis + w*z_axis
+
+            # Vertex order: 0..3 = front (ccw when looking from +z_axis), 4..7 = back
+            pts = np.array([v1f, v2f, v3f, v4f, v1b, v2b, v3b, v4b])
+
+            # 6 quad faces (each starts with the number of indices = 4)
+            faces = np.hstack([
+                [4, 0,1,2,3],   # front
+                [4, 4,5,6,7],   # back
+                [4, 0,1,5,4],   # side
+                [4, 1,2,6,5],   # side
+                [4, 2,3,7,6],   # side
+                [4, 3,0,4,7],   # side
+            ]).astype(np.int64)
+
+            box_mesh = pv.PolyData(pts, faces)
+            plotter.add_mesh(
+                box_mesh,
+                color='#D95319',
+                opacity=1,
+                show_edges=True,
+                edge_color='black',
+                line_width=3,
+                label='Wall Volume (thickened plane)'
+            )
+
+
 
     # --- 4. Plot the Trowel Trajectory and Orientation ---
     if trowel_local_frames:
@@ -163,36 +201,11 @@ if __name__ == "__main__":
             triangle_mesh = pv.PolyData(triangle_points, face)
             
             opacity = (i + 1) / len(trowel_local_frames)
-            plotter.add_mesh(triangle_mesh, color='purple', opacity=opacity, show_edges=True)
-
-        
-
-
-
-    # if trowel_tip_local_frames:
-    #     trowel_centroid_trajectory = np.array([frame[0] for frame in trowel_tip_local_frames])
-    #     plotter.add_mesh(pv.Spline(trowel_centroid_trajectory, 1000), color="blue", line_width=5, label="Trowel Centroid Path")
-    #     plotter.add_points(trowel_centroid_trajectory[0], color='green', point_size=15, render_points_as_spheres=True, label='Start')
-    #     plotter.add_points(trowel_centroid_trajectory[-1], color='red', point_size=15, render_points_as_spheres=True, label='End')
-
-
-    #     for i, (centroid, x_axis, y_axis, z_axis) in enumerate(trowel_tip_local_frames):
-    #         length, width = TRIANGLE_EDGE_SIZE, TRIANGLE_EDGE_SIZE / 2
-    #         v1_2d = np.array([-length/2, 0])
-    #         v2_2d = np.array([length/2, -width / 2])
-    #         v3_2d = np.array([length/2, width / 2])
             
-    #         v1_3d = centroid + v1_2d[0] * x_axis + v1_2d[1] * y_axis
-    #         v2_3d = centroid + v2_2d[0] * x_axis + v2_2d[1] * y_axis
-    #         v3_3d = centroid + v3_2d[0] * x_axis + v3_2d[1] * y_axis
-            
-    #         triangle_points = np.array([v1_3d, v2_3d, v3_3d])
-    #         face = np.hstack([3, 0, 1, 2])
-    #         triangle_mesh = pv.PolyData(triangle_points, face)
-            
-    #         opacity = (i + 1) / len(trowel_tip_local_frames)
-    #         plotter.add_mesh(triangle_mesh, color='purple', opacity=opacity, show_edges=True)
-
+            plotter.add_mesh(triangle_mesh, 
+                             color='grey', 
+                             opacity=0.8, 
+                             show_edges=True)
 
 
     plotter.add_legend()

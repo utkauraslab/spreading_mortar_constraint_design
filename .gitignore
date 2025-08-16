@@ -1,5 +1,5 @@
 *.pt
-
+*.npy
 
 # Ignore model checkpoints and weigths
 co-tracker/checkpoints/
