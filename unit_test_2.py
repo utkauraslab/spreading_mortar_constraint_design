@@ -1,9 +1,9 @@
 """
-unit_test_2.py
 
-This script visualizes the ground, brick side surfaces, trowel polygon region point clouds.
+
+This script visualizes the ground, brick side surfaces, trowel polygon region 3D point clouds under camera frame.
 Visualzie the local frame and cononical triangle shape under local frame which represent's trowel tip region.
-Also transformed triangle vertices under local frame into camera frame to verify the pose trajectory.
+Also transformed triangle vertices under local frame into camera frame to verify the pose trajectory extraction process.
 
 """
 
@@ -72,15 +72,17 @@ def calculate_local_frame(point_cloud):
     z_axis = -z_axis
     return centroid, x_axis, y_axis, z_axis
 
-# --- Main Execution ---
+
+
+
 if __name__ == "__main__":
-    print("Loading input data...")
+    
     all_depth_maps = np.load(DEPTH_MAP_PATH)
     trowel_vertices_2d_traj = np.load(TROWEL_VERTICES_2D_PATH, allow_pickle=True)
 
     num_frames, height, width = all_depth_maps.shape
 
-    # --- 1. Pre-calculate all Trowel Point Clouds ---
+    # Pre-calculate all Trowel Point Clouds
     print("Calculating 3D point cloud for the trowel in each frame...")
     trowel_point_clouds_3d = []
     for i in range(num_frames):
@@ -95,13 +97,13 @@ if __name__ == "__main__":
         else:
             trowel_point_clouds_3d.append(np.array([]))
     
-    print("All trowel point clouds calculated.")
+    
 
-    # --- 2. PyVista Visualization Setup ---
+    # PyVista Visualization Setup
     plotter = pv.Plotter(window_size=[1200, 800])
     plotter.set_background('white')
 
-    # --- 3. Plot Static Segmented Regions ---
+    # Plot Static Segmented Regions
     obj_names = ['brick_side_surface_by_sam_1', 
                  'brick_side_surface_by_sam_2', 
                  'brick_side_surface_by_sam_3', 
@@ -110,7 +112,7 @@ if __name__ == "__main__":
                  'ground_1', 
                  'ground_2']
     
-    print("Projecting and plotting static background regions...")
+    
     for name in obj_names:
         coords_2d_path = os.path.join(PROJECT_ROOT, 'seg_data', f'{name}.npy')
         if not os.path.exists(coords_2d_path): continue
@@ -120,8 +122,7 @@ if __name__ == "__main__":
             plotter.add_points(segmented_coords_3d, style='points', color='#D95319', 
                                render_points_as_spheres=True, point_size=3)
     
-    # --- 4. Interactive Trowel Local Frame Visualization ---
-    
+    # Interactive trowel local frame and canonical triangle shape visualization
     def update_trowel_frame(frame_value):
         frame_index = int(frame_value)
         # Define names for our dynamic actors so we can find and remove them

@@ -65,28 +65,21 @@ def calculate_local_frame(point_cloud):
     x_axis = eigenvectors[:, sorted_indices[0]]
     y_axis = eigenvectors[:, sorted_indices[1]]
     z_axis = eigenvectors[:, sorted_indices[2]]
-    # Your convention: flip Z to point "into page" for the wall; leave as-is for trowel then optionally flip vs wall later if you want.
-    z_axis = -z_axis
+    # Choose z_axis (normal) direction consistently: point towards the camera
+    # (dot(z_axis, centroid) <= 0)
+    if np.dot(z_axis, centroid) > 0:
+        z_axis = -z_axis
+    # Ensure right-handedness by flipping y_axis if necessary
+    R_temp = np.column_stack((x_axis, y_axis, z_axis))
+    if np.linalg.det(R_temp) < 0:
+        y_axis = -y_axis
     return centroid, x_axis, y_axis, z_axis
 
 # --- SE(3) helpers ---
 
 def se3_from_axes(origin, x_axis, y_axis, z_axis):
     """Build 4x4 pose T_cam_obj from axes (columns) and origin. Fix handedness if needed."""
-    # x_axis = x_axis / np.linalg.norm(x_axis)
-    # y_axis = y_axis / np.linalg.norm(y_axis)
-    # z_axis = np.cross(x_axis, y_axis)
-    # z_axis /= np.linalg.norm(z_axis)
-
-    # # Recompute y_axis to enforce right-handedness
-    # y_axis = np.cross(z_axis, x_axis)
-    # y_axis /= np.linalg.norm(y_axis)
-
     R = np.column_stack([x_axis, y_axis, z_axis])
-    #R = np.column_stack([x_axis, y_axis, z_axis])
-    # if np.linalg.det(R) < 0:
-    #     # Minimal fix: flip Z to make the basis right-handed
-    #     R[:, 2] = -R[:, 2]
     T = np.eye(4, dtype=float)
     T[:3, :3] = R
     T[:3,  3] = origin
@@ -151,6 +144,13 @@ if __name__ == "__main__":
     if brick_wall_point_cloud_3d.size > 0:
         centroid, x_axis, y_axis, z_axis = calculate_local_frame(brick_wall_point_cloud_3d)
         if centroid is not None:
+            # Flip y_axis to ensure trowel is above the wall in brick frame
+            y_axis = -y_axis
+            # Re-check and enforce right-handedness
+            R_temp = np.column_stack((x_axis, y_axis, z_axis))
+            if np.linalg.det(R_temp) < 0:
+                x_axis = -x_axis  # Flip x to maintain handedness
+
             # --- Build T_wall->cam ---
             T_wall2cam = se3_from_axes(centroid, x_axis, y_axis, z_axis)
             #np.save(os.path.join(PROJECT_ROOT, "T_wall2cam.npy"), T_wall2cam)
@@ -264,7 +264,6 @@ if __name__ == "__main__":
 
 
     # === NEW: Visualize trowel trajectory in WALL (brick) frame ===
-    centroid, x_axis, y_axis, z_axis = calculate_local_frame(brick_wall_point_cloud_3d)
     if T_wall2cam is not None and len(T_trowel2cam_list) > 0:
         T_cam2wall = invert_se3(T_wall2cam)
         T_trowel2brick = T_cam2wall[None, ...] @ T_trowel2cam  # (Nv,4,4)
@@ -364,5 +363,3 @@ if __name__ == "__main__":
         plotter2.camera.elevation = 25
         plotter2.camera.zoom(1.3)
         plotter2.show()
-
-

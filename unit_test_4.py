@@ -1,17 +1,13 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
-End-to-end:
-1) Load depth maps, polygons, plane mask, and saved tool poses (4x4).
-2) Unproject and visualize wall cloud + best-fit plane.
-3) Build a demo 3D centroid trajectory from trowel polygons (camera frame).
-4) Learn a single-demo ProMP and condition it (start/mid/end or all points).
-5) Generate a new trajectory.
-6) Visualize the generated path and place a canonical triangle at subsampled
+a static visualization of the 3D scene.
+The static 3D point cloud of the entire brick wall's side surface and its best-fit plane.
+The full trajectory of the trowel's centroid.
+Learn a single-demo ProMP and condition it (start/mid/end or all points).
+Generate a new trajectory.
+Visualize the generated path and place a canonical triangle at subsampled
    points, using orientations interpolated (SLERP) from the saved poses.
 
-Dependencies: numpy, opencv-python, pyvista, matplotlib, tqdm (optional)
 """
 
 import os
