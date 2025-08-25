@@ -94,16 +94,3 @@ Choose: **Depth-Anything-V2-Large 335.3M**
 - `utils/video2img.py`: Extracts frames from video.
 
 ---
-
-## Example Output
-
-- **Console:**  
-  - Plane fit and residual statistics (mean, max, std in mm).
-- **PyVista:**  
-  - 3D scene with wall, trowel, fitted plane, tip points, and residuals.
-
----
-
-## Citation
-
-If you use this code or data for research, please
