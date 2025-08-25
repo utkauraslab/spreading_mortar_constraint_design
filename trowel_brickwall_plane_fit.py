@@ -190,7 +190,9 @@ TROWEL_VERTICES_2D_PATH = os.path.join(PROJECT_ROOT, "trowel_polygon_vertices.np
 # --- NEW: Path for the single brick wall file ---
 BRICK_WALL_VERTICES_PATH = os.path.join(PROJECT_ROOT, "brick_wall_side_surface.npy")
 
-TROWEL_POSES_PATH = os.path.join(PROJECT_ROOT, "trowel_poses_trajectory.npy")
+
+TROWEL_POSES_PATH = os.path.join(PROJECT_ROOT, "T_trowel2cam.npy")
+BRICK_WALL_POSE = os.path.join(PROJECT_ROOT, "T_wall2cam.npy")
 # --- Visualization Parameters ---
 TRIANGLE_EDGE_SIZE = 0.15  # in meters for the trowel
 RECTANGLE_LENGTH = 0.85     # in meters for the brick wall plane
@@ -212,6 +214,7 @@ def unproject_points(coords_2d, depth_map, intrinsics):
     Y = (y_coords - cy) * Z / fy
     return np.stack((X, Y, Z), axis=-1)
 
+
 def calculate_local_frame(point_cloud):
     """
     PCA method to calculate the local coordinate frame for a point cloud.
@@ -227,13 +230,37 @@ def calculate_local_frame(point_cloud):
     y_axis = eigenvectors[:, sorted_indices[1]]
     z_axis = eigenvectors[:, sorted_indices[2]]
     z_axis = -z_axis
+
+    # R = np.column_stack([x_axis, y_axis, z_axis])
+    # T = np.eye(4)
+    # T[:3,:3] = R
+    # T[:3, 3] = centered_points
     return centroid, x_axis, y_axis, z_axis
 
 
+def compute_pose_matrix(centroid, x_axis, y_axis, z_axis):
+    """
+    Constructs a 4x4 homogeneous transformation matrix from the local frame components.
+    This matrix represents the transformation from the trowel's local frame to the camera's frame.
+    """
+    # Ensure all axes are normalized unit vectors
+    x_axis = x_axis / np.linalg.norm(x_axis)
+    y_axis = y_axis / np.linalg.norm(y_axis)
+    z_axis = z_axis / np.linalg.norm(z_axis)
+
+    # Construct the 3x3 rotation matrix
+    R = np.column_stack((x_axis, y_axis, z_axis))
+
+    # Assemble the 4x4 homogeneous transformation matrix
+    T = np.eye(4)
+    T[0:3, 0:3] = R
+    T[0:3, 3] = centroid
+
+    return T
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    print("Loading input data...")
+    
     all_depth_maps = np.load(DEPTH_MAP_PATH)
     trowel_vertices_2d_traj = np.load(TROWEL_VERTICES_2D_PATH, allow_pickle=True)
     brick_wall_vertices_2d = np.load(BRICK_WALL_VERTICES_PATH, allow_pickle=True)
@@ -241,7 +268,7 @@ if __name__ == "__main__":
     num_frames, height, width = all_depth_maps.shape
 
     # --- 1. Pre-calculate all Trowel Point Clouds ---
-    print("Calculating 3D point cloud for the trowel in each frame...")
+    
     trowel_point_clouds_3d = []
     for i in range(num_frames):
         frame_vertices = trowel_vertices_2d_traj[i]
@@ -254,6 +281,8 @@ if __name__ == "__main__":
             trowel_point_clouds_3d.append(point_cloud_3d)
         else:
             trowel_point_clouds_3d.append(np.array([]))
+
+    
     
     # --- 2. PyVista Visualization Setup ---
     plotter = pv.Plotter(window_size=[1200, 800])

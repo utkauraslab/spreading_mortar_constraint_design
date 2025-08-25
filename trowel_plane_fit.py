@@ -25,8 +25,11 @@ INTRINSICS = np.array([FX, FY, CX, CY])
 PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
 DEPTH_MAP_PATH = os.path.join(PROJECT_ROOT, "depth_map_cross_frames_refined.npy")
 TROWEL_VERTICES_2D_PATH = os.path.join(PROJECT_ROOT, "trowel_polygon_vertices.npy")
-OUTPUT_POSES_PATH = os.path.join(PROJECT_ROOT, "trowel_poses_trajectory.npy")
 
+TROWEL_POSES_PATH = os.path.join(PROJECT_ROOT, "T_trowel2cam.npy")
+BRICK_WALL_POSE = os.path.join(PROJECT_ROOT, "T_wall2cam.npy")
+OUTPUT_POSES_PATH = os.path.join(PROJECT_ROOT, "T_trowel2cam.npy")
+OUTPUT_POSES_PATH_2 = os.path.join(PROJECT_ROOT, "T_wall2cam.npy")
 # Controls the size of the triangle representing the trowel.
 TRIANGLE_EDGE_SIZE = 0.2  # in meters
 
@@ -95,6 +98,7 @@ def compute_pose_matrix(centroid, x_axis, y_axis, z_axis):
     T[0:3, 3] = centroid
 
     return T
+
 
 
 

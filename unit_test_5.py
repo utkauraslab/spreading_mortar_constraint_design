@@ -26,12 +26,14 @@ TROWEL_VERTICES_2D_PATH = os.path.join(PROJECT_ROOT, "trowel_polygon_vertices.np
 TROWEL_TIP_VERTICES_2D_PATH = os.path.join(PROJECT_ROOT, "trowel_tip_polygon_vertices.npy")
 BRICK_WALL_VERTICES_PATH = os.path.join(PROJECT_ROOT, "brick_wall_side_surface.npy")
 
-# --- Visualization Parameters ---
+TROWEL_POSES_PATH = os.path.join(PROJECT_ROOT, "T_trowel2cam.npy")
+BRICK_WALL_POSE = os.path.join(PROJECT_ROOT, "T_wall2cam.npy")
 
-TRIANGLE_EDGE_SIZE = 0.15  # meters (long side of canonical triangle)
-RECTANGLE_LENGTH   = 0.85  # meters
-RECTANGLE_HEIGHT = 0.05      # in meters for the brick wall plane
+TRIANGLE_EDGE_SIZE = 0.15  
+RECTANGLE_LENGTH   = 0.85  
+RECTANGLE_HEIGHT = 0.04      
 RECTANGLE_WIDTH = 0.16
+
 
 
 def unproject_points(coords_2d, depth_map, intrinsics):
@@ -46,6 +48,8 @@ def unproject_points(coords_2d, depth_map, intrinsics):
     X = (x_coords - cx) * Z / fx
     Y = (y_coords - cy) * Z / fy
     return np.stack((X, Y, Z), axis=-1)
+
+
 
 def calculate_local_frame(point_cloud):
     """
@@ -66,20 +70,40 @@ def calculate_local_frame(point_cloud):
 
 
 
+def compute_pose_matrix(centroid, x_axis, y_axis, z_axis):
+    """
+    Constructs a 4x4 homogeneous transformation matrix from the local frame components.
+    This matrix represents the transformation from the trowel's local frame to the camera's frame.
+    """
+    # Ensure all axes are normalized unit vectors
+    x_axis = x_axis / np.linalg.norm(x_axis)
+    y_axis = y_axis / np.linalg.norm(y_axis)
+    z_axis = z_axis / np.linalg.norm(z_axis)
+
+    # Construct the 3x3 rotation matrix
+    R = np.column_stack((x_axis, y_axis, z_axis))
+
+    # Assemble the 4x4 homogeneous transformation matrix
+    T = np.eye(4)
+    T[0:3, 0:3] = R
+    T[0:3, 3] = centroid
+
+    return T
+
+
+
+
 if __name__ == "__main__":
     
     all_depth_maps = np.load(DEPTH_MAP_PATH)
     trowel_vertices_2d_traj = np.load(TROWEL_VERTICES_2D_PATH, allow_pickle=True)
     trowel_tip_vertices_2d_traj = np.load(TROWEL_TIP_VERTICES_2D_PATH, allow_pickle=True)
     brick_wall_vertices_2d = np.load(BRICK_WALL_VERTICES_PATH, allow_pickle=True)
-    print(trowel_vertices_2d_traj.shape)
-    print(trowel_tip_vertices_2d_traj.shape)
     num_frames, height, width = all_depth_maps.shape
 
     # Pre-calculate all Trowel Local Frames 
-    
+    trowel_poses_trajectory = []
     trowel_local_frames = []
-    valid_frame_idx = []
     for i in tqdm(range(num_frames), desc="Calculating Trowel Frames"):
         frame_vertices = trowel_vertices_2d_traj[i]
         if frame_vertices.size > 0:
@@ -92,108 +116,124 @@ if __name__ == "__main__":
             local_frame = calculate_local_frame(point_cloud_3d)
             if local_frame[0] is not None:
                 trowel_local_frames.append(local_frame)
-                valid_frame_idx.append(i)
+            
+            pose_matrix = compute_pose_matrix(local_frame[0], local_frame[1], local_frame[2], local_frame[3])
 
-    START_AT_FRAME = 20
-    keep_pos = [k for k, fidx in enumerate(valid_frame_idx) if fidx >= (START_AT_FRAME-1)]
-    trowel_local_frames_view = [trowel_local_frames[k] for k in keep_pos]
+            trowel_poses_trajectory.append(pose_matrix)
 
-    # 2 PyVista Visualization Setup ---
+
+    print(len(trowel_poses_trajectory))
+    print(trowel_poses_trajectory[0])
+    np.save(TROWEL_POSES_PATH, trowel_poses_trajectory)
+    
+
+    # PyVista Visualization Setup
     plotter = pv.Plotter(window_size=[1200, 800])
     plotter.set_background('white')
 
-    # 3 Analyze and Plot Static Brick Wall ---
+    # Analyze and Plot Static Brick Wall
     brick_wall_mask = np.zeros((height, width), dtype=np.uint8)
     cv2.fillPoly(brick_wall_mask, [brick_wall_vertices_2d], 1)
     rows, cols = np.where(brick_wall_mask == 1)
     brick_wall_pixels_2d = np.vstack((cols, rows)).T
     brick_wall_point_cloud_3d = unproject_points(brick_wall_pixels_2d, all_depth_maps[0], INTRINSICS)
 
-    if brick_wall_point_cloud_3d.size > 0:
+    
+    # Get PCA fitted plane for the brick wall
+    centroid, x_axis, y_axis, z_axis = calculate_local_frame(brick_wall_point_cloud_3d)
+    brick_wall_pose = []
+    wall_pose = compute_pose_matrix(centroid, x_axis, y_axis, z_axis)
+    brick_wall_pose.append(wall_pose)
+    print(len(brick_wall_pose))
+    print(brick_wall_pose)
+    np.save(BRICK_WALL_POSE, brick_wall_pose)
+
+    if centroid is not None:
+        plotter.add_points(centroid, color='black', point_size=10, label='Wall Centroid')
+        arrow_scale = 0.1
+        plotter.add_arrows(cent=np.array([centroid]), direction=np.array([x_axis]), mag=arrow_scale, color='red', label='Wall X-Axis')
+        plotter.add_arrows(cent=np.array([centroid]), direction=np.array([y_axis]), mag=arrow_scale, color='green', label='Wall Y-Axis')
+        plotter.add_arrows(cent=np.array([centroid]), direction=np.array([z_axis]), mag=arrow_scale, color='blue', label='Wall Z-Axis (Normal)')
+
+        # Shape configuration for the brick wall
+        l, w, h = RECTANGLE_LENGTH / 2, RECTANGLE_WIDTH / 2, RECTANGLE_HEIGHT / 2
+        v1_2d, v2_2d, v3_2d, v4_2d = np.array([-l, -2*h]), np.array([l, -2*h]), np.array([l, 0]), np.array([-l, 0])
+            # v1_3d = centroid + v1_2d[0] * x_axis + v1_2d[1] * y_axis
+            # v2_3d = centroid + v2_2d[0] * x_axis + v2_2d[1] * y_axis
+            # v3_3d = centroid + v3_2d[0] * x_axis + v3_2d[1] * y_axis
+            # v4_3d = centroid + v4_2d[0] * x_axis + v4_2d[1] * y_axis
+            # rectangle_points = np.array([v1_3d, v2_3d, v3_3d, v4_3d])
+            # face = np.hstack([4, 0, 1, 2, 3])
+            # rectangle_mesh = pv.PolyData(rectangle_points, face)
+            # plotter.add_mesh(rectangle_mesh, color='lightgreen', opacity=0.8, show_edges=True, edge_color='black', line_width=3, label='Wall Best-Fit Plane')
+
+
+        v1f = centroid + v1_2d[0]*x_axis + v1_2d[1]*y_axis
+        v2f = centroid + v2_2d[0]*x_axis + v2_2d[1]*y_axis
+        v3f = centroid + v3_2d[0]*x_axis + v3_2d[1]*y_axis
+        v4f = centroid + v4_2d[0]*x_axis + v4_2d[1]*y_axis
+
+        v1b = centroid + v1_2d[0]*x_axis + v1_2d[1]*y_axis + w*z_axis
+        v2b = centroid + v2_2d[0]*x_axis + v2_2d[1]*y_axis + w*z_axis
+        v3b = centroid + v3_2d[0]*x_axis + v3_2d[1]*y_axis + w*z_axis
+        v4b = centroid + v4_2d[0]*x_axis + v4_2d[1]*y_axis + w*z_axis
+
+        # Vertex order: 0..3 = front (ccw when looking from +z_axis), 4..7 = back
+        pts = np.array([v1f, v2f, v3f, v4f, v1b, v2b, v3b, v4b])
+
+        # 6 quad faces (each starts with the number of indices = 4)
+        faces = np.hstack([
+            [4, 0,1,2,3],   # front
+            [4, 4,5,6,7],   # back
+            [4, 0,1,5,4],   # side
+            [4, 1,2,6,5],   # side
+            [4, 2,3,7,6],   # side
+            [4, 3,0,4,7],   # side
+        ]).astype(np.int64)
+
+        box_mesh = pv.PolyData(pts, faces)
+        plotter.add_mesh(
+            box_mesh,
+            color='#D95319',
+            opacity=1,
+            show_edges=True,
+            edge_color='black',
+            line_width=3,
+            label='Wall Volume (thickened plane)'
+        )
         
-        centroid, x_axis, y_axis, z_axis = calculate_local_frame(brick_wall_point_cloud_3d)
-
-        if centroid is not None:
-            plotter.add_points(centroid, color='black', point_size=10, label='Wall Centroid')
-            arrow_scale = 0.05
-            plotter.add_arrows(cent=np.array([centroid]), 
-                               direction=np.array([x_axis]), 
-                               mag=arrow_scale, 
-                               color='red', 
-                               label='Wall X-Axis')
-            plotter.add_arrows(cent=np.array([centroid]), 
-                               direction=np.array([y_axis]), 
-                               mag=arrow_scale, 
-                               color='green', 
-                               label='Wall Y-Axis')
-            plotter.add_arrows(cent=np.array([centroid]), 
-                               direction=np.array([z_axis]), 
-                               mag=arrow_scale, 
-                               color='blue', 
-                               label='Wall Z-Axis (Normal)')
-
-            l, w, h = RECTANGLE_LENGTH / 2, RECTANGLE_WIDTH / 2, RECTANGLE_HEIGHT / 2
-            v1_2d, v2_2d, v3_2d, v4_2d = np.array([-l, -2*h]), np.array([l, -2*h]), np.array([l, 0]), np.array([-l, 0])
-            
-            v1f = centroid + v1_2d[0]*x_axis + v1_2d[1]*y_axis
-            v2f = centroid + v2_2d[0]*x_axis + v2_2d[1]*y_axis
-            v3f = centroid + v3_2d[0]*x_axis + v3_2d[1]*y_axis
-            v4f = centroid + v4_2d[0]*x_axis + v4_2d[1]*y_axis
-
-            v1b = centroid + v1_2d[0]*x_axis + v1_2d[1]*y_axis + w*z_axis
-            v2b = centroid + v2_2d[0]*x_axis + v2_2d[1]*y_axis + w*z_axis
-            v3b = centroid + v3_2d[0]*x_axis + v3_2d[1]*y_axis + w*z_axis
-            v4b = centroid + v4_2d[0]*x_axis + v4_2d[1]*y_axis + w*z_axis
-
-            
-            pts = np.array([v1f, v2f, v3f, v4f, v1b, v2b, v3b, v4b])
-
-            faces = np.hstack([
-                [4, 0,1,2,3],   # front
-                [4, 4,5,6,7],   # back
-                [4, 0,1,5,4],   # side
-                [4, 1,2,6,5],   # side
-                [4, 2,3,7,6],   # side
-                [4, 3,0,4,7],   # side
-            ]).astype(np.int64)
-
-            box_mesh = pv.PolyData(pts, faces)
-            plotter.add_mesh(
-                box_mesh,
-                color='#D95319',
-                opacity=1,
-                show_edges=True,
-                edge_color='black',
-                line_width=3,
-                label='Wall Volume'
-            )
 
 
-    if trowel_local_frames_view:
-        trowel_centroid_trajectory = np.array([frame[0] for frame in trowel_local_frames_view])
+
+    # Plot the Trowel Trajectory and Orientation
+    if trowel_local_frames:
+        trowel_centroid_trajectory = np.array([frame[0] for frame in trowel_local_frames]) # centroid point trajectory
         plotter.add_mesh(pv.Spline(trowel_centroid_trajectory, 1000), color="blue", line_width=5, label="Trowel Centroid Path")
         plotter.add_points(trowel_centroid_trajectory[0], color='green', point_size=15, render_points_as_spheres=True, label='Start')
         plotter.add_points(trowel_centroid_trajectory[-1], color='red', point_size=15, render_points_as_spheres=True, label='End')
 
-        for i, (centroid, x_axis, y_axis, z_axis) in enumerate(trowel_local_frames_view):
+        # Canonical triangle shape configuration
+        for i, (centroid, x_axis, y_axis, z_axis) in enumerate(trowel_local_frames):
             length, width = TRIANGLE_EDGE_SIZE, TRIANGLE_EDGE_SIZE / 2
             v1_2d = np.array([-length/2, 0])
-            v2_2d = np.array([ length/2, -width/2])
-            v3_2d = np.array([ length/2,  width/2])
-
-            v1_3d = centroid + v1_2d[0]*x_axis + v1_2d[1]*y_axis
-            v2_3d = centroid + v2_2d[0]*x_axis + v2_2d[1]*y_axis
-            v3_3d = centroid + v3_2d[0]*x_axis + v3_2d[1]*y_axis
-
+            v2_2d = np.array([length/2, -width / 2])
+            v3_2d = np.array([length/2, width / 2])
+            
+            v1_3d = centroid + v1_2d[0] * x_axis + v1_2d[1] * y_axis
+            v2_3d = centroid + v2_2d[0] * x_axis + v2_2d[1] * y_axis
+            v3_3d = centroid + v3_2d[0] * x_axis + v3_2d[1] * y_axis
+            
             triangle_points = np.array([v1_3d, v2_3d, v3_3d])
             face = np.hstack([3, 0, 1, 2])
             triangle_mesh = pv.PolyData(triangle_points, face)
-
-            opacity = (i + 1) / len(trowel_local_frames_view)
+            
+            opacity = (i + 1) / len(trowel_local_frames)
+            
             plotter.add_mesh(triangle_mesh, 
                              color='grey', 
                              opacity=0.8, 
                              show_edges=True)
+
 
     plotter.add_legend()
     plotter.camera.azimuth = -60

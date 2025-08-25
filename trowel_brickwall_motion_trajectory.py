@@ -29,7 +29,6 @@ DEPTH_MAP_PATH = os.path.join(PROJECT_ROOT, "depth_map_cross_frames_refined.npy"
 TROWEL_VERTICES_2D_PATH = os.path.join(PROJECT_ROOT, "trowel_polygon_vertices.npy")
 BRICK_WALL_VERTICES_PATH = os.path.join(PROJECT_ROOT, "brick_wall_side_surface.npy")
 
-# --- Visualization Parameters ---
 
 TRIANGLE_EDGE_SIZE = 0.15  # meters (long side of canonical triangle)
 RECTANGLE_LENGTH   = 0.85  # meters
@@ -50,6 +49,7 @@ def unproject_points(coords_2d, depth_map, intrinsics):
     Y = (y_coords - cy) * Z / fy
     return np.stack((X, Y, Z), axis=-1)
 
+
 def calculate_local_frame(point_cloud):
     """
     PCA method to calculate the local coordinate frame for a point cloud.
@@ -65,11 +65,11 @@ def calculate_local_frame(point_cloud):
     x_axis = eigenvectors[:, sorted_indices[0]]
     y_axis = eigenvectors[:, sorted_indices[1]]
     z_axis = eigenvectors[:, sorted_indices[2]]
-    # Your convention: flip Z to point "into page" for the wall; leave as-is for trowel then optionally flip vs wall later if you want.
     z_axis = -z_axis
+
     return centroid, x_axis, y_axis, z_axis
 
-# --- SE(3) helpers ---
+
 
 def se3_from_axes(origin, x_axis, y_axis, z_axis):
     """Build 4x4 pose T_cam_obj from axes (columns) and origin. Fix handedness if needed."""
@@ -92,6 +92,7 @@ def se3_from_axes(origin, x_axis, y_axis, z_axis):
     T[:3,  3] = origin
     return T
 
+
 def invert_se3(T):
     R = T[:3, :3]
     t = T[:3, 3]
@@ -101,6 +102,8 @@ def invert_se3(T):
     return Ti
 
 
+
+
 if __name__ == "__main__":
     
     all_depth_maps = np.load(DEPTH_MAP_PATH)
@@ -108,8 +111,6 @@ if __name__ == "__main__":
     brick_wall_vertices_2d = np.load(BRICK_WALL_VERTICES_PATH, allow_pickle=True)
     num_frames, height, width = all_depth_maps.shape
 
-    # Pre-calculate all Trowel Local Frames 
-    
     trowel_local_frames = []
     valid_frame_idx = []
     for i in tqdm(range(num_frames), desc="Calculating Trowel Frames"):

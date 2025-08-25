@@ -16,16 +16,14 @@ import cv2
 import pyvista as pv
 from tqdm import tqdm
 
-# ------------------------- Config (edit as needed) -------------------------
 
-# Camera intrinsics
 FX = 836.0
 FY = 836.0
 CX = 979.0
 CY = 632.0
 INTRINSICS = np.array([FX, FY, CX, CY], dtype=np.float64)
 
-# Paths (assume this script sits in project root; change if needed)
+
 PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
 DEPTH_MAP_PATH            = os.path.join(PROJECT_ROOT, "depth_map_cross_frames_refined.npy")
 TROWEL_VERTICES_2D_PATH   = os.path.join(PROJECT_ROOT, "trowel_polygon_vertices.npy")            # (T,) object array, each (Ni,2)
@@ -509,8 +507,6 @@ def main():
     plotter.camera.azimuth = -60
     plotter.camera.elevation = 25
     plotter.camera.zoom(1.3)
-
-    print("\nShowing plot... rotate/zoom with mouse.")
     plotter.show()
 
 
