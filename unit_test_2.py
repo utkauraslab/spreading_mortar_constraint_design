@@ -1,10 +1,7 @@
 """
-
-
-This script visualizes the ground, brick side surfaces, trowel polygon region 3D point clouds under camera frame.
-Visualzie the local frame and cononical triangle shape under local frame which represent's trowel tip region.
-Also transformed triangle vertices under local frame into camera frame to verify the pose trajectory extraction process.
-
+    Visualizes the ground, brick side surfaces, trowel manifold region 3D point clouds under camera frame.
+    Validate the PCA method and project back to camera frame to check correctness.
+    
 """
 
 
@@ -46,6 +43,7 @@ def unproject_points(coords_2d, depth_map, intrinsics):
     X = (x_coords - cx) * Z / fx
     Y = (y_coords - cy) * Z / fy
     return np.stack((X, Y, Z), axis=-1)
+
 
 def calculate_local_frame(point_cloud):
     """

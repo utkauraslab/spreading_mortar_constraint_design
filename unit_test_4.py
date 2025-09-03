@@ -1,12 +1,12 @@
 
 """
-a static visualization of the 3D scene.
-The static 3D point cloud of the entire brick wall's side surface and its best-fit plane.
-The full trajectory of the trowel's centroid.
-Learn a single-demo ProMP and condition it (start/mid/end or all points).
-Generate a new trajectory.
-Visualize the generated path and place a canonical triangle at subsampled
-   points, using orientations interpolated (SLERP) from the saved poses.
+    a static visualization of the 3D scene.
+    The static 3D point cloud of the entire brick wall's side surface and its best-fit plane.
+    The full trajectory of the trowel's centroid.
+    Learn a single-demo ProMP and condition it (start/mid/end or all points).
+    Generate a new trajectory.
+    Visualize the generated path and place a canonical triangle at subsampled
+    points, using orientations interpolated (SLERP) from the saved poses.
 
 """
 
