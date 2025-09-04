@@ -1,0 +1,53 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.spatial.transform import Rotation as R
+from src.se3_class import se3_class
+from src.util import plot_tools, load_tools, process_tools
+
+
+
+'''Load data'''
+
+
+pose_path = "../trowel_pose_in_target_frame.npy"  
+# If you know the nominal frame rate, set dt (e.g., dt=1/60). Otherwise, leave None and it defaults to 1.0s.
+p_raw, q_raw, t_raw, dt = load_tools.load_pose_npy(
+    pose_path,
+    sub_sample=1,
+    trim_stationary=True,     # or False if you want to keep all frames
+    vel_thresh=1e-3,
+    T_total=3.0, # our video is 3 seconds long
+    dt=None
+)
+
+
+
+'''Process data'''
+p_in, q_in, t_in             = process_tools.pre_process(p_raw, q_raw, t_raw, opt= "savgol")
+p_out, q_out                 = process_tools.compute_output(p_in, q_in, t_in)
+p_init, q_init, p_att, q_att = process_tools.extract_state(p_in, q_in)
+p_in, q_in, p_out, q_out     = process_tools.rollout_list(p_in, q_in, p_out, q_out)
+
+
+
+'''Run lpvds'''
+se3_obj = se3_class(p_in, q_in, p_out, q_out, p_att, q_att, dt, K_init=4)
+se3_obj.begin()
+
+
+
+'''Evaluate results'''
+p_init = p_init[0] 
+q_init = R.from_quat(q_init[0].as_quat()) 
+p_test, q_test, gamma_test, v_test, w_test = se3_obj.sim(p_init, q_init, step_size=0.01)
+
+
+
+'''Plot results'''
+plot_tools.plot_vel(p_test, w_test)
+
+plot_tools.plot_gmm(p_in, se3_obj.gmm)
+plot_tools.plot_result(p_in, p_test, q_test)
+plot_tools.plot_gamma(gamma_test)
+
+plt.show()
